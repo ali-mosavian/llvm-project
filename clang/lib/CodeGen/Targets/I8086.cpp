@@ -58,6 +58,14 @@ class I8086TargetCodeGenInfo : public TargetCodeGenInfo {
 public:
   I8086TargetCodeGenInfo(CodeGenTypes &CGT)
       : TargetCodeGenInfo(std::make_unique<I8086ABIInfo>(CGT)) {}
+
+  // A huge object lives in a far segment; only pointers to it are huge.
+  LangAS getGlobalVarAddressSpace(CodeGenModule &CGM,
+                                  const VarDecl *D) const override {
+    if (D && D->getType().getAddressSpace() == getLangASFromTargetAS(3))
+      return getLangASFromTargetAS(1);
+    return TargetCodeGenInfo::getGlobalVarAddressSpace(CGM, D);
+  }
 };
 
 } // namespace

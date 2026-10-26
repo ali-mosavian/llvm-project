@@ -4994,8 +4994,26 @@ Value *ScalarExprEmitter::EmitSub(const BinOpInfo &op) {
   // Do the raw subtraction part. When pointer overflow is defined, use ptrtoint
   // as the pointer difference can be used to obtain the pointer without basing
   // it on one of the pointers (e.g. via -(nullptr - ptr)).
-  Value *LHS, *RHS;
-  if (CGF.getLangOpts().PointerOverflowDefined) {
+  Value *LHS = nullptr, *RHS = nullptr, *diffInChars = nullptr;
+  if (CGF.getTarget().hasFeature("i8086") &&
+      op.LHS->getType()->getPointerAddressSpace() == 3) {
+    // i8086: a huge pointer's packed bits are not its address; llrm subtracts
+    // two of them by an intrinsic of its own, declared outside the program's
+    // address space.
+    llvm::Module &M = CGF.CGM.getModule();
+    llvm::StringRef Name = "llrm.ia16.ptrdiff.i32.p3";
+    llvm::Function *Diff = M.getFunction(Name);
+    if (!Diff) {
+      llvm::Type *Ptr = op.LHS->getType();
+      Diff = llvm::Function::Create(
+          llvm::FunctionType::get(CGF.Int32Ty, {Ptr, Ptr}, false),
+          llvm::GlobalValue::ExternalLinkage, 0, Name, &M);
+      Diff->addFnAttr(llvm::Attribute::NoUnwind);
+    }
+    diffInChars = Builder.CreateSExtOrTrunc(
+        Builder.CreateCall(Diff, {op.LHS, op.RHS}), CGF.PtrDiffTy,
+        "sub.ptr.sub");
+  } else if (CGF.getLangOpts().PointerOverflowDefined) {
     LHS = Builder.CreatePtrToInt(op.LHS, CGF.PtrDiffTy, "sub.ptr.lhs.cast");
     RHS = Builder.CreatePtrToInt(op.RHS, CGF.PtrDiffTy, "sub.ptr.rhs.cast");
   } else {
@@ -5006,7 +5024,8 @@ Value *ScalarExprEmitter::EmitSub(const BinOpInfo &op) {
     if (RHS->getType() != CGF.PtrDiffTy)
       RHS = Builder.CreateZExtOrTrunc(RHS, CGF.PtrDiffTy, "sub.ptr.lhs.ext");
   }
-  Value *diffInChars = Builder.CreateSub(LHS, RHS, "sub.ptr.sub");
+  if (!diffInChars)
+    diffInChars = Builder.CreateSub(LHS, RHS, "sub.ptr.sub");
 
   // Okay, figure out the element size.
   const BinaryOperator *expr = cast<BinaryOperator>(op.E);
