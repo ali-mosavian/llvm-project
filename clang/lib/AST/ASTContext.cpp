@@ -2477,11 +2477,19 @@ TypeInfo ASTContext::getTypeInfoImpl(const Type *T) const {
     Width = Target->getPointerWidth(AS);
     Align = Target->getPointerAlign(AS);
     break;
-  case Type::Pointer:
-    AS = cast<PointerType>(T)->getPointeeType().getAddressSpace();
+  case Type::Pointer: {
+    QualType Pointee = cast<PointerType>(T)->getPointeeType();
+    AS = Pointee.getAddressSpace();
+    // i8086 medium model: code lives in the program address space (the
+    // layout's P1), a far pointer.
+    if (Pointee->isFunctionType() && AS == LangAS::Default &&
+        Target->getTriple().getEnvironment() == llvm::Triple::CODE16 &&
+        Target->getTriple().getArch() == llvm::Triple::x86)
+      AS = getLangASFromTargetAS(1);
     Width = Target->getPointerWidth(AS);
     Align = Target->getPointerAlign(AS);
     break;
+  }
   case Type::MemberPointer: {
     const auto *MPT = cast<MemberPointerType>(T);
     CXXABI::MemberPointerInfo MPI = ABI->getMemberPointerInfo(MPT);

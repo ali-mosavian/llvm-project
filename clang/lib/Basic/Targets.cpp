@@ -22,6 +22,7 @@
 #include "Targets/CSKY.h"
 #include "Targets/DirectX.h"
 #include "Targets/Hexagon.h"
+#include "Targets/I8086.h"
 #include "Targets/Lanai.h"
 #include "Targets/LoongArch.h"
 #include "Targets/M68k.h"
@@ -111,6 +112,10 @@ void addCygMingDefines(const LangOptions &Opts, MacroBuilder &Builder) {
 std::unique_ptr<TargetInfo> AllocateTarget(const llvm::Triple &Triple,
                                            const TargetOptions &Opts) {
   llvm::Triple::OSType os = Triple.getOS();
+
+  if (Triple.getArch() == llvm::Triple::x86 &&
+      Triple.getEnvironment() == llvm::Triple::CODE16)
+    return std::make_unique<I8086TargetInfo>(Triple, Opts);
 
   switch (Triple.getArch()) {
   default:

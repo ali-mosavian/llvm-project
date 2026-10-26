@@ -261,6 +261,8 @@ createTargetCodeGenInfo(CodeGenModule &CGM) {
     return createTCETargetCodeGenInfo(CGM);
 
   case llvm::Triple::x86: {
+    if (Triple.getEnvironment() == llvm::Triple::CODE16)
+      return createI8086TargetCodeGenInfo(CGM);
     bool IsDarwinVectorABI = Triple.isOSDarwin();
     bool IsWin32FloatStructABI = Triple.isOSWindows() && !Triple.isOSCygMing();
 

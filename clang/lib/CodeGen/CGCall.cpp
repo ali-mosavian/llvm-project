@@ -88,6 +88,10 @@ unsigned CodeGenTypes::ClangCallConvToLLVMCallConv(CallingConv CC) {
     return llvm::CallingConv::Intel_OCL_BI;
   // TODO: Add support for __pascal to LLVM.
   case CC_X86Pascal:
+    // i8086: llrm's "BASIC's own" (left to right, callee pops), numbered
+    // MIR's opcode::BASIC; its name is spelled `pascal` in Borland C.
+    if (Target.getTriple().getEnvironment() == llvm::Triple::CODE16)
+      return 1000;
     return llvm::CallingConv::C;
   // TODO: Add support for __vectorcall to LLVM.
   case CC_X86VectorCall:

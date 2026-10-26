@@ -563,6 +563,9 @@ std::unique_ptr<TargetCodeGenInfo>
 createWindowsMIPSTargetCodeGenInfo(CodeGenModule &CGM, bool IsOS32);
 
 std::unique_ptr<TargetCodeGenInfo>
+createI8086TargetCodeGenInfo(CodeGenModule &CGM);
+
+std::unique_ptr<TargetCodeGenInfo>
 createMSP430TargetCodeGenInfo(CodeGenModule &CGM);
 
 std::unique_ptr<TargetCodeGenInfo>

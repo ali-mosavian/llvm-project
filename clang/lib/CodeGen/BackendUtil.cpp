@@ -580,6 +580,10 @@ void EmitAssemblyHelper::CreateTargetMachine(bool MustCreateTM) {
   // Create the TargetMachine for generating code.
   std::string Error;
   const llvm::Triple &Triple = TheModule->getTargetTriple();
+  // i8086 has no machine code from clang: llrm takes the IR, with its own layout.
+  if (!MustCreateTM && Triple.getArch() == llvm::Triple::x86 &&
+      Triple.getEnvironment() == llvm::Triple::CODE16)
+    return;
   const llvm::Target *TheTarget = TargetRegistry::lookupTarget(Triple, Error);
   if (!TheTarget) {
     if (MustCreateTM)

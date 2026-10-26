@@ -4890,6 +4890,11 @@ static TypeSourceInfo *GetFullTypeForDeclarator(TypeProcessingState &state,
       // does not have a K&R-style identifier list), then the arguments are part
       // of the type, otherwise the argument list is ().
       DeclaratorChunk::FunctionTypeInfo &FTI = DeclType.Fun;
+      // i8086: `void far f(void)` is a far function, not a far void result.
+      if (T->isVoidType() && T.hasAddressSpace() &&
+          S.Context.getTargetInfo().getTriple().getEnvironment() ==
+              llvm::Triple::CODE16)
+        T = T.getUnqualifiedType();
       IsQualifiedFunction =
           FTI.hasMethodTypeQualifiers() || FTI.hasRefQualifier();
 
@@ -6646,6 +6651,14 @@ static void HandleAddressSpaceTypeAttribute(QualType &Type,
                                             const ParsedAttr &Attr,
                                             TypeProcessingState &State) {
   Sema &S = State.getSema();
+
+  // i8086: Borland's `void far f(void)` and `int (far *p)(void)` state a far
+  // function, which every function is in the medium model: an address space on
+  // a function type is dropped.
+  if (Type->isFunctionType() &&
+      S.Context.getTargetInfo().getTriple().getEnvironment() ==
+          llvm::Triple::CODE16)
+    return;
 
   // ISO/IEC TR 18037 S5.3 (amending C99 6.7.3): "A function type shall not be
   // qualified by an address-space qualifier."
