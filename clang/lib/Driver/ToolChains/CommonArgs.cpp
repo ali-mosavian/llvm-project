@@ -3096,6 +3096,11 @@ void tools::addMCModel(const Driver &D, const llvm::opt::ArgList &Args,
       Ok = CM == "small" || CM == "medium" || CM == "large";
     } else if (Triple.getArch() == llvm::Triple::lanai) {
       Ok = llvm::is_contained({"small", "medium", "large"}, CM);
+
+    } else if (Triple.getEnvironment() == llvm::Triple::CODE16) {
+      // i8086: Borland's memory models.
+      Ok = llvm::is_contained({"small", "medium", "compact", "large", "huge"},
+                              CM);
     }
     if (Ok) {
       CmdArgs.push_back(Args.MakeArgString("-mcmodel=" + CM));

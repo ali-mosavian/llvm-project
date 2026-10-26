@@ -2480,11 +2480,10 @@ TypeInfo ASTContext::getTypeInfoImpl(const Type *T) const {
   case Type::Pointer: {
     QualType Pointee = cast<PointerType>(T)->getPointeeType();
     AS = Pointee.getAddressSpace();
-    // i8086 medium model: code lives in the program address space (the
+    // i8086 far-code models: code lives in the program address space (the
     // layout's P1), a far pointer.
     if (Pointee->isFunctionType() && AS == LangAS::Default &&
-        Target->getTriple().getEnvironment() == llvm::Triple::CODE16 &&
-        Target->getTriple().getArch() == llvm::Triple::x86)
+        Target->hasFeature("i8086-far-code"))
       AS = getLangASFromTargetAS(1);
     Width = Target->getPointerWidth(AS);
     Align = Target->getPointerAlign(AS);

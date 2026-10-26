@@ -1864,6 +1864,12 @@ QualType Sema::BuildPointerType(QualType T,
   if (checkQualifiedFunction(*this, T, Loc, QFK_Pointer))
     return QualType();
 
+  // i8086 compact, large and huge: a data pointer is far unless written
+  // __near__ (address space 5) or given another distance.
+  if (T.getAddressSpace() == LangAS::Default && !T->isFunctionType() &&
+      Context.getTargetInfo().hasFeature("i8086-far-data"))
+    T = Context.getAddrSpaceQualType(T, getLangASFromTargetAS(1));
+
   if (T->isObjCObjectType())
     return Context.getObjCObjectPointerType(T);
 
@@ -6756,8 +6762,12 @@ static void HandleAddressSpaceTypeAttribute(QualType &Type,
         Attr.setInvalid();
         return;
       }
-      if (Attr.getKind() == ParsedAttr::AT_I8086Near)
-        return;
+      if (Attr.getKind() == ParsedAttr::AT_I8086Near) {
+        if (S.Context.getTargetInfo().hasFeature("i8086-far-data"))
+          ASIdx = getLangASFromTargetAS(5);
+        else
+          return;
+      }
       if (QualType Redirected =
               redirectI8086PointerSpace(S.Context, Type, ASIdx);
           !Redirected.isNull()) {
