@@ -58,7 +58,8 @@ public:
     return {};
   }
 
-  // Far and huge pointers carry a segment: 32 bits. The segment alone is 16.
+  // Far, huge and fixed pointers carry a segment: 32 bits. The segment alone
+  // is 16.
   uint64_t getPointerWidthV(LangAS AddrSpace) const override {
     switch (toTargetAddressSpace(AddrSpace)) {
     case 1: // far
@@ -69,15 +70,14 @@ public:
       return 16;
     }
   }
-  // A near pointer converts to a far one, and either to a huge one, as in C
-  // for real mode; the reverse needs a cast.
+  // Borland converts between near, far and huge pointers with a warning
+  // (a far one to a near one drops its segment); the IR carries the cast.
   bool isAddressSpaceSupersetOf(LangAS A, LangAS B) const override {
-    auto Number = [](LangAS AS) {
-      return AS == LangAS::Default ? 0u : toTargetAddressSpace(AS);
+    auto Pointer = [](LangAS AS) {
+      unsigned N = AS == LangAS::Default ? 0u : toTargetAddressSpace(AS);
+      return N == 0 || N == 1 || N == 3;
     };
-    unsigned To = Number(A), From = Number(B);
-    return To == From || ((To == 1 || To == 3) && From == 0) ||
-           (To == 3 && From == 1);
+    return Pointer(A) && Pointer(B);
   }
   uint64_t getPointerAlignV(LangAS AddrSpace) const override { return 16; }
 

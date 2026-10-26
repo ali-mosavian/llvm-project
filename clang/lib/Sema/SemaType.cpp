@@ -6580,6 +6580,21 @@ static bool BuildAddressSpaceIndex(Sema &S, LangAS &ASIdx,
 QualType Sema::BuildAddressSpaceAttr(QualType &T, LangAS ASIdx, Expr *AddrSpace,
                                      SourceLocation AttrLoc) {
   if (!AddrSpace->isValueDependent()) {
+    // i8086: `far` beside a pointer makes the pointer far, as in Borland C,
+    // however the declarator spells it (`T far *p`, `T *far p`, `far *p`).
+    if (T->isPointerType() &&
+        Context.getTargetInfo().getTriple().getEnvironment() ==
+            llvm::Triple::CODE16) {
+      QualType Pointee = T->getPointeeType();
+      if (Pointee.getAddressSpace() == ASIdx)
+        return T;
+      if (Pointee.getAddressSpace() == LangAS::Default) {
+        Qualifiers Local = T.getLocalQualifiers();
+        return Context.getQualifiedType(
+            Context.getPointerType(Context.getAddrSpaceQualType(Pointee, ASIdx)),
+            Local);
+      }
+    }
     if (DiagnoseMultipleAddrSpaceAttributes(*this, T.getAddressSpace(), ASIdx,
                                             AttrLoc))
       return QualType();
