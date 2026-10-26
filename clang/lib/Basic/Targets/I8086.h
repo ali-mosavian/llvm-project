@@ -58,11 +58,12 @@ public:
     PtrDiffType = FarData ? SignedLong : SignedInt;
     SigAtomicType = SignedInt;
     MaxAtomicPromoteWidth = MaxAtomicInlineWidth = 0;
-    // Code is near (program address space 0) or far (1).
+    // Code is near (program address space 0) or far (1). A segment (2) and a
+    // huge pointer (3) are not integers: their arithmetic carries.
     resetDataLayout(
         std::string("e-") + (FarCode ? "P1-" : "") +
         "p:16:16-p1:32:16:16:16-p2:16:16-p3:32:16:16:32-p4:32:16:16:16-i32:16-"
-        "i64:16-n8:16:32");
+        "i64:16-n8:16:32-ni:2:3");
   }
 
   bool hasFarCode() const { return FarCode; }

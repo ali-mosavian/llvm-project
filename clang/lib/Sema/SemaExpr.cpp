@@ -12085,6 +12085,18 @@ QualType Sema::CheckSubtractionOperands(ExprResult &LHS, ExprResult &RHS,
             << RHS.get()->getSourceRange();
 
       if (CompLHSTy) *CompLHSTy = LHS.get()->getType();
+      // i8086: far and huge pointers differ by a long, as in Borland C.
+      if (Context.getTargetInfo().hasFeature("i8086")) {
+        unsigned AS = LHS.get()->getType()->getPointeeType().getAddressSpace() ==
+                              LangAS::Default
+                          ? 0
+                          : toTargetAddressSpace(LHS.get()
+                                                     ->getType()
+                                                     ->getPointeeType()
+                                                     .getAddressSpace());
+        if (AS == 1 || AS == 3)
+          return Context.LongTy;
+      }
       return Context.getPointerDiffType();
     }
   }

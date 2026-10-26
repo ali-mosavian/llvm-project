@@ -5192,9 +5192,16 @@ LValue CodeGenFunction::EmitArraySubscriptExpr(const ArraySubscriptExpr *E,
     if (SanOpts.has(SanitizerKind::ArrayBounds))
       EmitBoundsCheck(E, E->getBase(), Idx, IdxTy, Accessed);
 
-    // Extend or truncate the index type to 32 or 64-bits.
-    if (Promote && Idx->getType() != IntPtrTy)
-      Idx = Builder.CreateIntCast(Idx, IntPtrTy, IdxSigned, "idxprom");
+    // Extend or truncate the index type to 32 or 64-bits. A huge pointer
+    // (i8086) indexes by 32 bits.
+    llvm::Type *IndexTy = IntPtrTy;
+    QualType BaseTy = E->getBase()->getType();
+    if (BaseTy->isPointerType() && getTarget().hasFeature("i8086") &&
+        getContext().getTargetAddressSpace(
+            BaseTy->getPointeeType().getAddressSpace()) == 3)
+      IndexTy = Int32Ty;
+    if (Promote && Idx->getType() != IndexTy)
+      Idx = Builder.CreateIntCast(Idx, IndexTy, IdxSigned, "idxprom");
 
     return Idx;
   };

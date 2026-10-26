@@ -4300,7 +4300,10 @@ QualType ASTContext::getConstantArrayType(QualType EltTy,
   // Convert the array size into a canonical width matching the pointer size for
   // the target.
   llvm::APInt ArySize(ArySizeIn);
-  ArySize = ArySize.zextOrTrunc(Target->getMaxPointerWidth());
+  // A huge object (i8086) may pass 64K: its size has 32 bits.
+  ArySize = ArySize.zextOrTrunc(Target->hasFeature("i8086")
+                                    ? 32
+                                    : Target->getMaxPointerWidth());
 
   // The type stores only the CVR bits of the index qualifiers, so key on
   // those.

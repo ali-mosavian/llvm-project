@@ -372,7 +372,12 @@ ConstantArrayType::getNumAddressingBits(const ASTContext &Context) const {
 }
 
 unsigned ConstantArrayType::getMaxSizeBits(const ASTContext &Context) {
-  unsigned Bits = Context.getTypeSize(Context.getSizeType());
+  // A huge object (i8086) may pass what size_t counts.
+  unsigned Bits = std::max<unsigned>(
+      Context.getTypeSize(Context.getSizeType()),
+      Context.getTargetInfo().hasFeature("i8086")
+          ? 32
+          : Context.getTargetInfo().getMaxPointerWidth());
 
   // Limit the number of bits in size_t so that maximal bit size fits 64 bit
   // integer (see PR8256).  We can do this as currently there is no hardware

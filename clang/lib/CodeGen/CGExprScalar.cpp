@@ -5011,8 +5011,17 @@ Value *ScalarExprEmitter::EmitSub(const BinOpInfo &op) {
       Diff->addFnAttr(llvm::Attribute::NoUnwind);
     }
     diffInChars = Builder.CreateSExtOrTrunc(
-        Builder.CreateCall(Diff, {op.LHS, op.RHS}), CGF.PtrDiffTy,
-        "sub.ptr.sub");
+        Builder.CreateCall(Diff, {op.LHS, op.RHS}),
+        CGF.ConvertType(op.E->getType()), "sub.ptr.sub");
+  } else if (CGF.getTarget().hasFeature("i8086") &&
+             op.LHS->getType()->getPointerAddressSpace() == 1) {
+    // A far pointer differs by its offsets alone, as a long.
+    llvm::Type *Offset = CGF.Int16Ty;
+    diffInChars = Builder.CreateSExt(
+        Builder.CreateSub(Builder.CreatePtrToInt(op.LHS, Offset),
+                          Builder.CreatePtrToInt(op.RHS, Offset),
+                          "sub.ptr.sub"),
+        CGF.ConvertType(op.E->getType()));
   } else if (CGF.getLangOpts().PointerOverflowDefined) {
     LHS = Builder.CreatePtrToInt(op.LHS, CGF.PtrDiffTy, "sub.ptr.lhs.cast");
     RHS = Builder.CreatePtrToInt(op.RHS, CGF.PtrDiffTy, "sub.ptr.rhs.cast");
@@ -5063,6 +5072,8 @@ Value *ScalarExprEmitter::EmitSub(const BinOpInfo &op) {
 
     divisor = CGF.CGM.getSize(elementSize);
   }
+  if (divisor->getType() != diffInChars->getType())
+    divisor = Builder.CreateSExtOrTrunc(divisor, diffInChars->getType());
 
   if (CGF.getLangOpts().StablePointerSubtraction)
     return Builder.CreateSDiv(diffInChars, divisor, "sub.ptr.div");
