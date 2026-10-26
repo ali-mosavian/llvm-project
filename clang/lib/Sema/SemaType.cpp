@@ -1864,11 +1864,14 @@ QualType Sema::BuildPointerType(QualType T,
   if (checkQualifiedFunction(*this, T, Loc, QFK_Pointer))
     return QualType();
 
-  // i8086 compact, large and huge: a data pointer is far unless written
-  // __near__ (address space 5) or given another distance.
+  // i8086 compact, large and huge: a data pointer is far unless the pointee
+  // is written __near__ or has another distance.
   if (T.getAddressSpace() == LangAS::Default && !T->isFunctionType() &&
-      Context.getTargetInfo().hasFeature("i8086-far-data"))
-    T = Context.getAddrSpaceQualType(T, getLangASFromTargetAS(1));
+      Context.getTargetInfo().hasFeature("i8086-far-data")) {
+    const auto *Written = T->getAs<AttributedType>();
+    if (!Written || Written->getAttrKind() != attr::I8086Near)
+      T = Context.getAddrSpaceQualType(T, getLangASFromTargetAS(1));
+  }
 
   if (T->isObjCObjectType())
     return Context.getObjCObjectPointerType(T);
@@ -6763,10 +6766,21 @@ static void HandleAddressSpaceTypeAttribute(QualType &Type,
         return;
       }
       if (Attr.getKind() == ParsedAttr::AT_I8086Near) {
-        if (S.Context.getTargetInfo().hasFeature("i8086-far-data"))
-          ASIdx = getLangASFromTargetAS(5);
-        else
+        if (!S.Context.getTargetInfo().hasFeature("i8086-far-data"))
           return;
+        // Far data is the default there: `char *__near__ p` is a near
+        // pointer, and `__near__ char *p` marks the pointee for the `*`.
+        if (Type->isPointerType()) {
+          QualType Pointee = Type->getPointeeType();
+          Type = S.Context.getQualifiedType(
+              S.Context.getPointerType(
+                  S.Context.removeAddrSpaceQualType(Pointee)),
+              Type.getLocalQualifiers());
+        } else {
+          Type = State.getAttributedType(
+              ::new (S.Context) I8086NearAttr(S.Context, Attr), Type, Type);
+        }
+        return;
       }
       if (QualType Redirected =
               redirectI8086PointerSpace(S.Context, Type, ASIdx);

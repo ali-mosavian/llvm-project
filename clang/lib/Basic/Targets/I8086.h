@@ -56,12 +56,11 @@ public:
     PtrDiffType = FarData ? SignedLong : SignedInt;
     SigAtomicType = SignedInt;
     MaxAtomicPromoteWidth = MaxAtomicInlineWidth = 0;
-    // Code is near (program address space 0) or far (1). Where far data
-    // pointers are the default, a near one is written address space 5.
+    // Code is near (program address space 0) or far (1).
     resetDataLayout(
-        std::string("e-") + (FarCode ? "P1-" : "") + "p:16:16-p1:32:16:16:16-" +
-        (FarData ? "p5:16:16-" : "") +
-        "p2:16:16-p3:32:16:16:32-p4:32:16:16:16-i32:16-i64:16-n8:16:32");
+        std::string("e-") + (FarCode ? "P1-" : "") +
+        "p:16:16-p1:32:16:16:16-p2:16:16-p3:32:16:16:32-p4:32:16:16:16-i32:16-"
+        "i64:16-n8:16:32");
   }
 
   bool hasFarCode() const { return FarCode; }
@@ -91,7 +90,7 @@ public:
   bool isAddressSpaceSupersetOf(LangAS A, LangAS B) const override {
     auto Pointer = [](LangAS AS) {
       unsigned N = AS == LangAS::Default ? 0u : toTargetAddressSpace(AS);
-      return N == 0 || N == 1 || N == 3 || N == 5;
+      return N == 0 || N == 1 || N == 3;
     };
     return Pointer(A) && Pointer(B);
   }

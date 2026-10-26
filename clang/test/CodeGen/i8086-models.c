@@ -5,12 +5,12 @@
 // RUN: %clang_cc1 -triple i386-pc-none-code16 -fborland-extensions -std=gnu89 -mcmodel=huge -DCODE=4 -DDATA=4 -DDIFF=4 -emit-llvm -o - %s | FileCheck %s --check-prefix=LARGE
 // Memory models: the model sets the default distance of code and of data; __near__,
 // __far__ and __huge__ on a data pointer override it. A function pointer follows the
-// code distance. A near data pointer is address space 5 where far is the default.
+// code distance.
 
 // SMALL: target datalayout = "e-p:16:16-p1:
 // MEDIUM: target datalayout = "e-P1-p:16:16-p1:
-// COMPACT: target datalayout = "e-p:16:16-p1:{{.*}}-p5:16:16-
-// LARGE: target datalayout = "e-P1-p:16:16-p1:{{.*}}-p5:16:16-
+// COMPACT: target datalayout = "e-p:16:16-p1:
+// LARGE: target datalayout = "e-P1-p:16:16-p1:
 
 char *np;
 char __far__ *fp;
@@ -25,7 +25,7 @@ struct S { char *p; int (*f)(void); int k; };
 // COMPACT: @np = {{.*}}global ptr addrspace(1) null
 // LARGE: @np = {{.*}}global ptr addrspace(1) null
 // SMALL: @nr = {{.*}}global ptr null
-// COMPACT: @nr = {{.*}}global ptr addrspace(5) null
+// COMPACT: @nr = {{.*}}global ptr null
 // COMPACT: @pp = {{.*}}global ptr addrspace(1) null
 // MEDIUM: @nf = {{.*}}global ptr addrspace(1) null
 // COMPACT: @nf = {{.*}}global ptr null
@@ -42,9 +42,12 @@ char buf[4], *p, **ppp, c;
 _Static_assert(sizeof(buf) == 4 && sizeof(c) == 1, "list members");
 
 // Arithmetic and loads follow the pointer's own distance.
-// COMPACT: define {{.*}}i16 @near_load(ptr addrspace(5)
-// COMPACT: load i8, ptr addrspace(5)
+// COMPACT: define {{.*}}i16 @near_load(ptr noundef
+// COMPACT: load i8, ptr %
 int near_load(char __near__ *q) { return *q; }
+// COMPACT: define {{.*}}i16 @near_var(ptr noundef
+// COMPACT: load i8, ptr %
+int near_var(char *__near__ q) { return *q; }
 // LARGE: define {{.*}}i16 @far_load(ptr addrspace(1)
 // LARGE: load i8, ptr addrspace(1)
 int far_load(char *q) { return *q; }
