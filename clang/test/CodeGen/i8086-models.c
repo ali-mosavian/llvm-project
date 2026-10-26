@@ -1,8 +1,8 @@
-// RUN: %clang_cc1 -triple i386-pc-none-code16 -fborland-extensions -std=gnu89 -mcmodel=small -DCODE=2 -DDATA=2 -DDIFF=2 -emit-llvm -o - %s | FileCheck %s --check-prefix=SMALL
-// RUN: %clang_cc1 -triple i386-pc-none-code16 -fborland-extensions -std=gnu89 -mcmodel=medium -DCODE=4 -DDATA=2 -DDIFF=2 -emit-llvm -o - %s | FileCheck %s --check-prefix=MEDIUM
-// RUN: %clang_cc1 -triple i386-pc-none-code16 -fborland-extensions -std=gnu89 -mcmodel=compact -DCODE=2 -DDATA=4 -DDIFF=4 -emit-llvm -o - %s | FileCheck %s --check-prefix=COMPACT
-// RUN: %clang_cc1 -triple i386-pc-none-code16 -fborland-extensions -std=gnu89 -mcmodel=large -DCODE=4 -DDATA=4 -DDIFF=4 -emit-llvm -o - %s | FileCheck %s --check-prefix=LARGE
-// RUN: %clang_cc1 -triple i386-pc-none-code16 -fborland-extensions -std=gnu89 -mcmodel=huge -DCODE=4 -DDATA=4 -DDIFF=4 -emit-llvm -o - %s | FileCheck %s --check-prefix=LARGE
+// RUN: %clang_cc1 -triple i386-pc-none-code16 -fborland-extensions -std=gnu89 -mcmodel=small -DWANT_SMALL -DCODE=2 -DDATA=2 -DDIFF=2 -emit-llvm -o - %s | FileCheck %s --check-prefix=SMALL
+// RUN: %clang_cc1 -triple i386-pc-none-code16 -fborland-extensions -std=gnu89 -mcmodel=medium -DWANT_MEDIUM -DCODE=4 -DDATA=2 -DDIFF=2 -emit-llvm -o - %s | FileCheck %s --check-prefix=MEDIUM
+// RUN: %clang_cc1 -triple i386-pc-none-code16 -fborland-extensions -std=gnu89 -mcmodel=compact -DWANT_COMPACT -DCODE=2 -DDATA=4 -DDIFF=4 -emit-llvm -o - %s | FileCheck %s --check-prefix=COMPACT
+// RUN: %clang_cc1 -triple i386-pc-none-code16 -fborland-extensions -std=gnu89 -mcmodel=large -DWANT_LARGE -DCODE=4 -DDATA=4 -DDIFF=4 -emit-llvm -o - %s | FileCheck %s --check-prefix=LARGE
+// RUN: %clang_cc1 -triple i386-pc-none-code16 -fborland-extensions -std=gnu89 -mcmodel=huge -DWANT_HUGE -DCODE=4 -DDATA=4 -DDIFF=4 -emit-llvm -o - %s | FileCheck %s --check-prefix=LARGE
 // Memory models: the model sets the default distance of code and of data; __near__,
 // __far__ and __huge__ on a data pointer override it. A function pointer follows the
 // code distance.
@@ -51,3 +51,13 @@ int near_var(char *__near__ q) { return *q; }
 // LARGE: define {{.*}}i16 @far_load(ptr addrspace(1)
 // LARGE: load i8, ptr addrspace(1)
 int far_load(char *q) { return *q; }
+
+// The model's name as a macro, as Borland and Watcom state it.
+#if defined(__SMALL__) + defined(__MEDIUM__) + defined(__COMPACT__) + defined(__LARGE__) + defined(__HUGE__) != 1
+#error "exactly one model macro"
+#endif
+#if defined(WANT_SMALL) && !defined(__SMALL__) || defined(WANT_MEDIUM) && !defined(__MEDIUM__) ||                       \
+    defined(WANT_COMPACT) && !defined(__COMPACT__) || defined(WANT_LARGE) && !defined(__LARGE__) ||                      \
+    defined(WANT_HUGE) && !defined(__HUGE__)
+#error "the model macro is not the model's"
+#endif

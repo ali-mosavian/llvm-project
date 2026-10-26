@@ -17,4 +17,9 @@ void I8086TargetInfo::getTargetDefines(const LangOptions &Opts,
   Builder.defineMacro("__i8086__");
   Builder.defineMacro("__I86__");
   Builder.defineMacro("_M_I86");
+  // Borland's and Watcom's names for the memory model.
+  const char *Model = Huge ? "__HUGE__"
+                      : FarCode ? (FarData ? "__LARGE__" : "__MEDIUM__")
+                                : (FarData ? "__COMPACT__" : "__SMALL__");
+  Builder.defineMacro(Model);
 }

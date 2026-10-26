@@ -28,6 +28,7 @@ class LLVM_LIBRARY_VISIBILITY I8086TargetInfo : public TargetInfo {
   // Medium, the default, has far code and near data.
   bool FarCode = true;
   bool FarData = false;
+  bool Huge = false;
 
 public:
   I8086TargetInfo(const llvm::Triple &Triple, const TargetOptions &Opts)
@@ -36,6 +37,7 @@ public:
     FarCode = Model == "medium" || Model == "large" || Model == "huge" ||
               Model == "default" || Model.empty();
     FarData = Model == "compact" || Model == "large" || Model == "huge";
+    Huge = Model == "huge";
     TLSSupported = false;
     IntWidth = IntAlign = 16;
     LongWidth = 32;
@@ -65,6 +67,7 @@ public:
 
   bool hasFarCode() const { return FarCode; }
   bool hasFarData() const { return FarData; }
+  bool isHugeModel() const { return Huge; }
 
   void getTargetDefines(const LangOptions &Opts,
                         MacroBuilder &Builder) const override;
