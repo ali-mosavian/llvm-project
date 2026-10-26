@@ -6577,24 +6577,32 @@ static bool BuildAddressSpaceIndex(Sema &S, LangAS &ASIdx,
   return true;
 }
 
+// i8086: `far` beside a pointer makes the pointer far, as in Borland C,
+// however the declarator spells it (`T far *p`, `T *far p`, `far *p`).
+// Returns a null type when T is not such a pointer.
+static QualType redirectI8086PointerSpace(ASTContext &Context, QualType T,
+                                          LangAS ASIdx) {
+  if (!T->isPointerType() ||
+      Context.getTargetInfo().getTriple().getEnvironment() !=
+          llvm::Triple::CODE16)
+    return QualType();
+  QualType Pointee = T->getPointeeType();
+  if (Pointee.getAddressSpace() == ASIdx)
+    return T;
+  if (Pointee.getAddressSpace() != LangAS::Default)
+    return QualType();
+  Qualifiers Local = T.getLocalQualifiers();
+  return Context.getQualifiedType(
+      Context.getPointerType(Context.getAddrSpaceQualType(Pointee, ASIdx)),
+      Local);
+}
+
 QualType Sema::BuildAddressSpaceAttr(QualType &T, LangAS ASIdx, Expr *AddrSpace,
                                      SourceLocation AttrLoc) {
   if (!AddrSpace->isValueDependent()) {
-    // i8086: `far` beside a pointer makes the pointer far, as in Borland C,
-    // however the declarator spells it (`T far *p`, `T *far p`, `far *p`).
-    if (T->isPointerType() &&
-        Context.getTargetInfo().getTriple().getEnvironment() ==
-            llvm::Triple::CODE16) {
-      QualType Pointee = T->getPointeeType();
-      if (Pointee.getAddressSpace() == ASIdx)
-        return T;
-      if (Pointee.getAddressSpace() == LangAS::Default) {
-        Qualifiers Local = T.getLocalQualifiers();
-        return Context.getQualifiedType(
-            Context.getPointerType(Context.getAddrSpaceQualType(Pointee, ASIdx)),
-            Local);
-      }
-    }
+    if (QualType Redirected = redirectI8086PointerSpace(Context, T, ASIdx);
+        !Redirected.isNull())
+      return Redirected;
     if (DiagnoseMultipleAddrSpaceAttributes(*this, T.getAddressSpace(), ASIdx,
                                             AttrLoc))
       return QualType();
@@ -6737,6 +6745,26 @@ static void HandleAddressSpaceTypeAttribute(QualType &Type,
         S.getLangOpts().isSYCL() ? Attr.asSYCLLangAS() : Attr.asOpenCLLangAS();
     if (S.getLangOpts().HLSL)
       ASIdx = Attr.asHLSLLangAS();
+
+    // i8086 segment keywords: only on the 8086, where `near` is the default.
+    if (Attr.getKind() == ParsedAttr::AT_I8086Far ||
+        Attr.getKind() == ParsedAttr::AT_I8086Near ||
+        Attr.getKind() == ParsedAttr::AT_I8086Huge) {
+      if (S.Context.getTargetInfo().getTriple().getEnvironment() !=
+          llvm::Triple::CODE16) {
+        S.Diag(Attr.getLoc(), diag::err_i8086_segment_keyword) << Attr;
+        Attr.setInvalid();
+        return;
+      }
+      if (Attr.getKind() == ParsedAttr::AT_I8086Near)
+        return;
+      if (QualType Redirected =
+              redirectI8086PointerSpace(S.Context, Type, ASIdx);
+          !Redirected.isNull()) {
+        Type = Redirected;
+        return;
+      }
+    }
 
     if (ASIdx == LangAS::Default)
       llvm_unreachable("Invalid address space");
@@ -9171,6 +9199,9 @@ static void processTypeAttrs(TypeProcessingState &state, QualType &type,
     case ParsedAttr::AT_OpenCLConstantAddressSpace:
     case ParsedAttr::AT_OpenCLGenericAddressSpace:
     case ParsedAttr::AT_AddressSpace:
+    case ParsedAttr::AT_I8086Far:
+    case ParsedAttr::AT_I8086Near:
+    case ParsedAttr::AT_I8086Huge:
     case ParsedAttr::AT_SYCLPrivateAddressSpace:
     case ParsedAttr::AT_SYCLGlobalAddressSpace:
     case ParsedAttr::AT_SYCLLocalAddressSpace:

@@ -1321,6 +1321,9 @@ Parser::isCXXDeclarationSpecifier(ImplicitTypenameContext AllowImplicitTypename,
   case tok::kw___uptr:
   case tok::kw___ptr64:
   case tok::kw___ptr32:
+  case tok::kw___far__:
+  case tok::kw___near__:
+  case tok::kw___huge__:
   case tok::kw___forceinline:
   case tok::kw___unaligned:
   case tok::kw__Nonnull:

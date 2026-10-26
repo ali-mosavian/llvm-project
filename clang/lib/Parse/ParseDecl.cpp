@@ -991,6 +991,9 @@ void Parser::ParseMicrosoftTypeAttributes(ParsedAttributes &attrs) {
     case tok::kw___ptr64:
     case tok::kw___w64:
     case tok::kw___ptr32:
+    case tok::kw___far__:
+    case tok::kw___near__:
+    case tok::kw___huge__:
     case tok::kw___sptr:
     case tok::kw___uptr: {
       IdentifierInfo *AttrName = Tok.getIdentifierInfo();
@@ -1043,6 +1046,9 @@ SourceLocation Parser::SkipExtendedMicrosoftTypeAttributes() {
     case tok::kw___cdecl:
     case tok::kw___vectorcall:
     case tok::kw___ptr32:
+    case tok::kw___far__:
+    case tok::kw___near__:
+    case tok::kw___huge__:
     case tok::kw___ptr64:
     case tok::kw___w64:
     case tok::kw___unaligned:
@@ -4047,6 +4053,9 @@ void Parser::ParseDeclarationSpecifiers(
     case tok::kw___uptr:
     case tok::kw___ptr64:
     case tok::kw___ptr32:
+    case tok::kw___far__:
+    case tok::kw___near__:
+    case tok::kw___huge__:
     case tok::kw___w64:
     case tok::kw___cdecl:
     case tok::kw___stdcall:
@@ -5741,6 +5750,9 @@ bool Parser::isTypeSpecifierQualifier(const Token &Tok) {
   case tok::kw___w64:
   case tok::kw___ptr64:
   case tok::kw___ptr32:
+  case tok::kw___far__:
+  case tok::kw___near__:
+  case tok::kw___huge__:
   case tok::kw___pascal:
   case tok::kw___unaligned:
   case tok::kw___ptrauth:
@@ -6026,6 +6038,9 @@ bool Parser::isDeclarationSpecifier(
   case tok::kw___uptr:
   case tok::kw___ptr64:
   case tok::kw___ptr32:
+  case tok::kw___far__:
+  case tok::kw___near__:
+  case tok::kw___huge__:
   case tok::kw___forceinline:
   case tok::kw___pascal:
   case tok::kw___unaligned:
@@ -6330,6 +6345,9 @@ void Parser::ParseTypeQualifierListOpt(
     case tok::kw___w64:
     case tok::kw___ptr64:
     case tok::kw___ptr32:
+    case tok::kw___far__:
+    case tok::kw___near__:
+    case tok::kw___huge__:
     case tok::kw___cdecl:
     case tok::kw___stdcall:
     case tok::kw___fastcall:

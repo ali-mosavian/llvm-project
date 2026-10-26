@@ -571,6 +571,10 @@ public:
       return LangAS::opencl_private;
     case ParsedAttr::AT_OpenCLGenericAddressSpace:
       return LangAS::opencl_generic;
+    case ParsedAttr::AT_I8086Far:
+      return getLangASFromTargetAS(1);
+    case ParsedAttr::AT_I8086Huge:
+      return getLangASFromTargetAS(3);
     default:
       return LangAS::Default;
     }

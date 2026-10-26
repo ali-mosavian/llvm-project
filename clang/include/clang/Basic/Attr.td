@@ -4597,6 +4597,22 @@ def Win64 : IgnoredAttr {
   let LangOpts = [MicrosoftExt];
 }
 
+// i8086 segment keywords: type attributes that name an address space of the target.
+def I8086Far : TypeAttr {
+  let Spellings = [CustomKeyword<"__far__">];
+  let Documentation = [InternalOnly];
+}
+
+def I8086Near : TypeAttr {
+  let Spellings = [CustomKeyword<"__near__">];
+  let Documentation = [InternalOnly];
+}
+
+def I8086Huge : TypeAttr {
+  let Spellings = [CustomKeyword<"__huge__">];
+  let Documentation = [InternalOnly];
+}
+
 def Ptr32 : TypeAttr {
   let Spellings = [CustomKeyword<"__ptr32">];
   let Documentation = [Ptr32Docs];

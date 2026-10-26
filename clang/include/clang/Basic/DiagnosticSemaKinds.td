@@ -3659,6 +3659,8 @@ def err_attribute_not_clinkage : Error<
   "function type with %0 attribute must have C linkage">;
 def err_function_decl_cmse_ns_call : Error<
   "functions may not be declared with 'cmse_nonsecure_call' attribute">;
+def err_i8086_segment_keyword : Error<
+  "%0 is only available when targeting i8086">;
 def err_attribute_address_function_type : Error<
   "function type may not be qualified with an address space">;
 def err_as_qualified_auto_decl : Error<
