@@ -6555,6 +6555,13 @@ void Parser::ParseDeclaratorInternal(Declarator &D,
     }
   }
 
+  // Borland and Watcom: `short far *a, far *b;`. The keyword before the `*` of
+  // a later declarator is that pointer's, as the one after the `*` is.
+  ParsedAttributes LeadingAttrs(AttrFactory);
+  if (Tok.isOneOf(tok::kw___far__, tok::kw___near__, tok::kw___huge__) &&
+      NextToken().is(tok::star))
+    ParseMicrosoftTypeAttributes(LeadingAttrs);
+
   tok::TokenKind Kind = Tok.getKind();
 
   if (D.getDeclSpec().isTypeSpecPipe() && !isPipeDeclarator(D)) {
@@ -6590,6 +6597,7 @@ void Parser::ParseDeclaratorInternal(Declarator &D,
                          : AR_GNUAttributesParsedAndRejected);
     ParseTypeQualifierListOpt(DS, Reqs, /*AtomicOrPtrauthAllowed=*/true,
                               !D.mayOmitIdentifier());
+    DS.getAttributes().takeAllAppendingFrom(LeadingAttrs);
     D.ExtendWithDeclSpec(DS);
 
     // Recursively parse the declarator.
