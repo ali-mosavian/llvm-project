@@ -3250,6 +3250,11 @@ Sema::CheckBuiltinFunctionCall(FunctionDecl *FDecl, unsigned BuiltinID,
     return BuiltinMaskedScatter(*this, TheCall);
   case Builtin::BI__builtin_invoke:
     return BuiltinInvoke(*this, TheCall);
+  case Builtin::BI__emit__:
+    for (unsigned I = 0, N = TheCall->getNumArgs(); I != N; ++I)
+      if (BuiltinConstantArgRange(TheCall, I, -128, 255))
+        return ExprError();
+    break;
   case Builtin::BI__builtin_prefetch:
     if (BuiltinPrefetch(TheCall))
       return ExprError();

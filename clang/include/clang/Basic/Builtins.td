@@ -1433,6 +1433,13 @@ def ReadSteadyCounter : Builtin {
   let Prototype = "unsigned long long int()";
 }
 
+// Borland's __emit__(byte, ...): the constant bytes go into the code stream.
+def Emit : LibBuiltin<"dos.h"> {
+  let Spellings = ["__emit__"];
+  let Attributes = [NoThrow, CustomTypeChecking];
+  let Prototype = "void(unsigned char, ...)";
+}
+
 def Trap : Builtin {
   let Spellings = ["__builtin_trap"];
   let Attributes = [NoThrow, NoReturn];

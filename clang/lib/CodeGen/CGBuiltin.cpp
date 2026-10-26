@@ -5993,6 +5993,18 @@ RValue CodeGenFunction::EmitBuiltinExpr(const GlobalDecl GD, unsigned BuiltinID,
   case Builtin::BI__builtin_align_down:
     return EmitBuiltinAlignTo(E, false);
 
+  case Builtin::BI__emit__: {
+    std::string Bytes;
+    for (const Expr *Arg : E->arguments()) {
+      Bytes += Bytes.empty() ? ".byte " : ",";
+      Bytes += std::to_string(
+          Arg->EvaluateKnownConstInt(getContext()).getSExtValue() & 0xff);
+    }
+    llvm::InlineAsm *IA = llvm::InlineAsm::get(
+        llvm::FunctionType::get(VoidTy, false), Bytes, "", true);
+    Builder.CreateCall(IA);
+    return RValue::get(nullptr);
+  }
   case Builtin::BI__noop:
     // __noop always evaluates to an integer literal zero.
     return RValue::get(ConstantInt::get(IntTy, 0));
