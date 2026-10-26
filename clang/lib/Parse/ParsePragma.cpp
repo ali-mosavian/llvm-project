@@ -12,6 +12,7 @@
 
 #include "clang/AST/ASTContext.h"
 #include "clang/Basic/DiagnosticParse.h"
+#include "clang/Basic/DiagnosticLex.h"
 #include "clang/Basic/PragmaKinds.h"
 #include "clang/Basic/TargetInfo.h"
 #include "clang/Lex/Preprocessor.h"
@@ -80,6 +81,14 @@ struct PragmaUnusedHandler : public PragmaHandler {
 
 struct PragmaWeakHandler : public PragmaHandler {
   explicit PragmaWeakHandler() : PragmaHandler("weak") {}
+  void HandlePragma(Preprocessor &PP, PragmaIntroducer Introducer,
+                    Token &FirstToken) override;
+};
+
+// Watcom's `#pragma aux NAME "SYMBOL"`: the link name of NAME, which is what
+// redefine_extname does.
+struct PragmaAuxHandler : public PragmaHandler {
+  explicit PragmaAuxHandler() : PragmaHandler("aux") {}
   void HandlePragma(Preprocessor &PP, PragmaIntroducer Introducer,
                     Token &FirstToken) override;
 };
@@ -444,6 +453,21 @@ void Parser::initializePragmaHandlers() {
   RedefineExtnameHandler = std::make_unique<PragmaRedefineExtnameHandler>();
   PP.AddPragmaHandler(RedefineExtnameHandler.get());
 
+  AuxHandler = std::make_unique<PragmaAuxHandler>();
+  PP.AddPragmaHandler(AuxHandler.get());
+
+  // Borland and Watcom state segments with the Microsoft pragmas.
+  if (getLangOpts().Borland && !getLangOpts().MicrosoftExt) {
+    MSDataSeg = std::make_unique<PragmaMSPragma>("data_seg");
+    PP.AddPragmaHandler(MSDataSeg.get());
+    MSBSSSeg = std::make_unique<PragmaMSPragma>("bss_seg");
+    PP.AddPragmaHandler(MSBSSSeg.get());
+    MSConstSeg = std::make_unique<PragmaMSPragma>("const_seg");
+    PP.AddPragmaHandler(MSConstSeg.get());
+    MSCodeSeg = std::make_unique<PragmaMSPragma>("code_seg");
+    PP.AddPragmaHandler(MSCodeSeg.get());
+  }
+
   FPContractHandler = std::make_unique<PragmaFPContractHandler>();
   PP.AddPragmaHandler("STDC", FPContractHandler.get());
 
@@ -596,6 +620,18 @@ void Parser::resetPragmaHandlers() {
   WeakHandler.reset();
   PP.RemovePragmaHandler(RedefineExtnameHandler.get());
   RedefineExtnameHandler.reset();
+  PP.RemovePragmaHandler(AuxHandler.get());
+  AuxHandler.reset();
+  if (getLangOpts().Borland && !getLangOpts().MicrosoftExt) {
+    PP.RemovePragmaHandler(MSDataSeg.get());
+    MSDataSeg.reset();
+    PP.RemovePragmaHandler(MSBSSSeg.get());
+    MSBSSSeg.reset();
+    PP.RemovePragmaHandler(MSConstSeg.get());
+    MSConstSeg.reset();
+    PP.RemovePragmaHandler(MSCodeSeg.get());
+    MSCodeSeg.reset();
+  }
 
   if (getLangOpts().OpenCL) {
     PP.RemovePragmaHandler("OPENCL", OpenCLExtensionHandler.get());
@@ -1215,6 +1251,19 @@ bool Parser::HandlePragmaMSSegment(StringRef PragmaName,
       PP.Diag(PragmaLocation, diag::warn_pragma_expected_non_wide_string)
           << PragmaName;
       return false;
+    }
+    // Borland's and Watcom's `data_seg("NAME", "CLASS")`: the class is the
+    // linker's, not the section's.
+    if (getLangOpts().Borland && Tok.is(tok::comma)) {
+      PP.Lex(Tok); // ,
+      if (Tok.isNot(tok::string_literal)) {
+        PP.Diag(PragmaLocation, diag::warn_pragma_expected_section_name)
+            << PragmaName;
+        return false;
+      }
+      ExprResult ClassResult = ParseStringLiteralExpression();
+      if (ClassResult.isInvalid())
+        return false;
     }
     // Setting section "" has no effect
     if (SegmentName->getLength())
@@ -2677,6 +2726,53 @@ void PragmaWeakHandler::HandlePragma(Preprocessor &PP,
 }
 
 // #pragma redefine_extname identifier identifier
+void PragmaAuxHandler::HandlePragma(Preprocessor &PP,
+                                    PragmaIntroducer Introducer,
+                                    Token &AuxToken) {
+  SourceLocation AuxLoc = AuxToken.getLocation();
+
+  Token Name;
+  PP.Lex(Name);
+  Token Link;
+  PP.Lex(Link);
+  Token End;
+  PP.Lex(End);
+  // Only the link-name form is carried; the register and inline-code forms
+  // are not, and say so.
+  if (Name.isNot(tok::identifier) || Link.isNot(tok::string_literal) ||
+      End.isNot(tok::eod)) {
+    PP.Diag(AuxLoc, diag::warn_pragma_ignored);
+    while (End.isNot(tok::eod) && End.isNot(tok::eof))
+      PP.Lex(End);
+    return;
+  }
+
+  StringRef Spelling = PP.getSpelling(Link);
+  if (Spelling.size() < 2 || Spelling.front() != '"') {
+    PP.Diag(Link.getLocation(), diag::warn_pragma_ignored);
+    return;
+  }
+  Token Symbol;
+  Symbol.startToken();
+  Symbol.setKind(tok::identifier);
+  Symbol.setLocation(Link.getLocation());
+  // LLVM's \01 marker: the name is the symbol as written, with no prefix.
+  Symbol.setIdentifierInfo(PP.getIdentifierInfo(
+      "\01" + Spelling.substr(1, Spelling.size() - 2).str()));
+
+  MutableArrayRef<Token> Toks(PP.getPreprocessorAllocator().Allocate<Token>(3),
+                              3);
+  Token &Annot = Toks[0];
+  Annot.startToken();
+  Annot.setKind(tok::annot_pragma_redefine_extname);
+  Annot.setLocation(AuxLoc);
+  Annot.setAnnotationEndLoc(Link.getLocation());
+  Toks[1] = Name;
+  Toks[2] = Symbol;
+  PP.EnterTokenStream(Toks, /*DisableMacroExpansion=*/true,
+                      /*IsReinject=*/false);
+}
+
 void PragmaRedefineExtnameHandler::HandlePragma(Preprocessor &PP,
                                                 PragmaIntroducer Introducer,
                                                 Token &RedefToken) {
