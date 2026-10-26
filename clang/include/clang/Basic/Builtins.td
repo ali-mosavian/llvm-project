@@ -1434,7 +1434,7 @@ def ReadSteadyCounter : Builtin {
 }
 
 // Borland's __emit__(byte, ...): the constant bytes go into the code stream.
-def Emit : LibBuiltin<"dos.h"> {
+def Emit : LangBuiltin<"ALL_LANGUAGES"> {
   let Spellings = ["__emit__"];
   let Attributes = [NoThrow, CustomTypeChecking];
   let Prototype = "void(unsigned char, ...)";
