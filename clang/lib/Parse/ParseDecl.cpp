@@ -2433,6 +2433,11 @@ Parser::DeclGroupPtrTy Parser::ParseDeclGroup(ParsingDeclSpec &DS,
     //    short x, __attribute__((common)) var;    -> declarator
     MaybeParseGNUAttributes(D);
 
+    // i8086: Borland's `unsigned char far *src, far *out;` -- the next
+    // declarator's own distance.
+    if (getLangOpts().Borland)
+      ParseMicrosoftTypeAttributes(D.getAttributes());
+
     // MSVC parses but ignores qualifiers after the comma as an extension.
     if (getLangOpts().MicrosoftExt)
       DiagnoseAndSkipExtendedMicrosoftTypeAttributes();
