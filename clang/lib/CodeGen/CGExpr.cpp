@@ -44,7 +44,10 @@
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/ScopeExit.h"
 #include "llvm/ADT/StringExtras.h"
+#include "llvm/ADT/StringSet.h"
+#include "llvm/ADT/StringSwitch.h"
 #include "llvm/IR/Constants.h"
+#include "llvm/IR/InlineAsm.h"
 #include "llvm/IR/DataLayout.h"
 #include "llvm/IR/Intrinsics.h"
 #include "llvm/IR/IntrinsicsWebAssembly.h"
@@ -6647,6 +6650,165 @@ RValue CodeGenFunction::EmitRValueForField(LValue LV,
 //                             Expression Emission
 //===--------------------------------------------------------------------===//
 
+namespace {
+/// The width in bits of an x86 register `#pragma aux` names, or 0.
+unsigned auxRegisterBits(StringRef Name) {
+  return llvm::StringSwitch<unsigned>(Name)
+      .Cases({"al", "bl", "cl", "dl"}, 8)
+      .Cases({"ax", "bx", "cx", "dx", "si", "di"}, 16)
+      .Cases({"eax", "ebx", "ecx", "edx", "esi", "edi"}, 32)
+      .Default(0);
+}
+
+/// A byte register travels as its word register: llrm's inline blocks name
+/// words (the code reads the low byte it wants, and a result's is cut from it).
+StringRef auxWord(StringRef R) {
+  return llvm::StringSwitch<StringRef>(R)
+      .Case("al", "ax")
+      .Case("bl", "bx")
+      .Case("cl", "cx")
+      .Case("dl", "dx")
+      .Default(R);
+}
+
+SmallVector<SmallVector<StringRef, 2>, 4> auxSets(StringRef List) {
+  SmallVector<SmallVector<StringRef, 2>, 4> Sets;
+  SmallVector<StringRef, 4> Parts;
+  List.split(Parts, ';', -1, /*KeepEmpty=*/false);
+  for (StringRef Part : Parts) {
+    SmallVector<StringRef, 2> Set;
+    Part.split(Set, '+');
+    for (StringRef &R : Set)
+      R = auxWord(R);
+    Sets.push_back(Set);
+  }
+  return Sets;
+}
+} // namespace
+
+/// A call of a function that `#pragma aux NAME ... = "code"` gave inline code:
+/// the code as inline assembly whose constraints are the registers the pragma
+/// names (`parm` in, `value` out, `modify` clobbered). A set of two registers
+/// is a 32-bit value, high register first.
+static RValue EmitAuxInlineCall(CodeGenFunction &CGF, const CallExpr *E,
+                                StringRef Spec) {
+  CGBuilderTy &B = CGF.Builder;
+  SmallVector<StringRef, 5> Fields;
+  Spec.split(Fields, '|', 4);
+  if (Fields.size() != 5) {
+    CGF.CGM.ErrorUnsupported(E, "a malformed #pragma aux");
+    return RValue::get(nullptr);
+  }
+  auto Parm = auxSets(Fields[0]);
+  auto Value = auxSets(Fields[1]);
+  auto Modify = auxSets(Fields[2]);
+  bool Exact = Fields[3] == "1";
+  StringRef Code = Fields[4];
+  llvm::LLVMContext &Ctx = CGF.getLLVMContext();
+
+  auto Bad = [&](StringRef What) {
+    CGF.CGM.ErrorUnsupported(E, What);
+    return RValue::get(nullptr);
+  };
+  for (auto *List : {&Parm, &Value, &Modify})
+    for (auto &Set : *List)
+      for (StringRef R : Set)
+        if (!auxRegisterBits(R))
+          return Bad("a register of #pragma aux that is not carried");
+  if (Parm.size() != E->getNumArgs())
+    return Bad("a #pragma aux whose registers do not match the arguments");
+
+  SmallVector<llvm::Value *, 4> Args;
+  SmallVector<llvm::Type *, 4> ArgTys;
+  std::string In;
+  llvm::StringSet<> Used;
+  auto Convert = [&](llvm::Value *V, unsigned Bits, bool Signed) {
+    llvm::Type *T = llvm::Type::getIntNTy(Ctx, Bits);
+    if (V->getType()->isPointerTy())
+      V = B.CreatePtrToInt(V, CGF.IntPtrTy);
+    return B.CreateIntCast(V, T, Signed);
+  };
+  for (unsigned I = 0; I < E->getNumArgs(); ++I) {
+    const Expr *Arg = E->getArg(I);
+    if (!CGF.hasScalarEvaluationKind(Arg->getType()))
+      return Bad("an aggregate argument of #pragma aux code");
+    llvm::Value *V = CGF.EmitScalarExpr(Arg);
+    bool Signed = Arg->getType()->isSignedIntegerType();
+    auto &Set = Parm[I];
+    if (Set.size() == 1) {
+      Args.push_back(Convert(V, auxRegisterBits(Set[0]), Signed));
+      In += ",{" + Set[0].str() + "}";
+      Used.insert(Set[0]);
+    } else if (Set.size() == 2) {
+      llvm::Value *W = Convert(V, 32, Signed);
+      Args.push_back(B.CreateTrunc(W, llvm::Type::getInt16Ty(Ctx)));
+      Args.push_back(B.CreateTrunc(B.CreateLShr(W, 16),
+                                   llvm::Type::getInt16Ty(Ctx)));
+      In += ",{" + Set[1].str() + "},{" + Set[0].str() + "}";
+      Used.insert(Set[0]);
+      Used.insert(Set[1]);
+    } else {
+      return Bad("a register set of #pragma aux of this size");
+    }
+  }
+  for (llvm::Value *A : Args)
+    ArgTys.push_back(A->getType());
+
+  // Outputs: the value. Unless `exact`, the argument registers are changed
+  // too (clobbered, as well as read).
+  SmallVector<llvm::Type *, 4> OutTys;
+  std::string Out, Clobbers;
+  unsigned ValueOuts = 0;
+  llvm::StringSet<> Answered;
+  if (!Value.empty()) {
+    for (StringRef R : Value[0]) {
+      OutTys.push_back(llvm::Type::getIntNTy(Ctx, auxRegisterBits(R)));
+      Out += ",={" + R.str() + "}";
+      ++ValueOuts;
+      Answered.insert(R);
+    }
+  }
+  auto Clobber = [&](StringRef R) {
+    if (Answered.insert(R).second)
+      Clobbers += ",~{" + R.str() + "}";
+  };
+  if (!Exact)
+    for (auto &Set : Parm)
+      for (StringRef R : Set)
+        Clobber(R);
+  for (auto &Set : Modify)
+    for (StringRef R : Set)
+      Clobber(R);
+  Clobbers += ",~{memory}";
+
+  std::string Constraints = (Out + In + Clobbers).substr(1);
+  llvm::Type *RetTy = OutTys.empty()   ? llvm::Type::getVoidTy(Ctx)
+                      : OutTys.size() == 1 ? OutTys[0]
+                                           : llvm::StructType::get(Ctx, OutTys);
+  auto *FTy = llvm::FunctionType::get(RetTy, ArgTys, false);
+  auto *IA = llvm::InlineAsm::get(FTy, Code, Constraints,
+                                  /*hasSideEffects=*/true,
+                                  /*isAlignStack=*/false,
+                                  llvm::InlineAsm::AD_Intel);
+  llvm::Value *Call = B.CreateCall(IA, Args);
+  QualType Ty = E->getType();
+  if (Ty->isVoidType() || ValueOuts == 0)
+    return RValue::get(nullptr);
+  llvm::Value *R = OutTys.size() == 1 ? Call : B.CreateExtractValue(Call, 0);
+  if (ValueOuts == 2) {
+    llvm::Value *Lo = B.CreateZExt(B.CreateExtractValue(Call, 1),
+                                   llvm::Type::getInt32Ty(Ctx));
+    R = B.CreateOr(B.CreateShl(B.CreateZExt(R, llvm::Type::getInt32Ty(Ctx)), 16),
+                   Lo);
+  }
+  llvm::Type *Want = CGF.ConvertType(Ty);
+  if (Want->isPointerTy())
+    R = B.CreateIntToPtr(R, Want);
+  else
+    R = B.CreateIntCast(R, Want, Ty->isSignedIntegerType());
+  return RValue::get(R);
+}
+
 RValue CodeGenFunction::EmitCallExpr(const CallExpr *E,
                                      ReturnValueSlot ReturnValue,
                                      llvm::CallBase **CallOrInvoke) {
@@ -6680,6 +6842,11 @@ RValue CodeGenFunction::EmitCallExpr(const CallExpr *E,
             dyn_cast_if_present<CXXMethodDecl>(CE->getCalleeDecl());
         MD && MD->isImplicitObjectMemberFunction())
       return EmitCXXOperatorMemberCallExpr(CE, MD, ReturnValue, CallOrInvoke);
+
+  if (const auto *FD = dyn_cast_or_null<FunctionDecl>(E->getCalleeDecl()))
+    if (const auto *Label = FD->getAttr<AsmLabelAttr>())
+      if (Label->getLabel().starts_with("\02aux:"))
+        return EmitAuxInlineCall(*this, E, Label->getLabel().substr(5));
 
   CGCallee callee = EmitCallee(E->getCallee());
 

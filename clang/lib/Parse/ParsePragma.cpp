@@ -26,7 +26,9 @@
 #include "clang/Sema/SemaCodeCompletion.h"
 #include "clang/Sema/SemaRISCV.h"
 #include "llvm/ADT/ArrayRef.h"
+#include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/ScopeExit.h"
+#include "llvm/ADT/SmallString.h"
 #include "llvm/ADT/StringSwitch.h"
 #include <optional>
 using namespace clang;
@@ -2733,21 +2735,113 @@ void PragmaAuxHandler::HandlePragma(Preprocessor &PP,
 
   Token Name;
   PP.Lex(Name);
-  Token Link;
-  PP.Lex(Link);
-  Token End;
-  PP.Lex(End);
-  // Only the link-name form is carried; the register and inline-code forms
-  // are not, and say so.
-  if (Name.isNot(tok::identifier) || Link.isNot(tok::string_literal) ||
-      End.isNot(tok::eod)) {
-    PP.Diag(AuxLoc, diag::warn_pragma_ignored);
-    while (End.isNot(tok::eod) && End.isNot(tok::eof))
-      PP.Lex(End);
+  std::vector<Token> Rest;
+  for (Token T; (PP.Lex(T), T.isNot(tok::eod) && T.isNot(tok::eof));)
+    Rest.push_back(T);
+
+  // `NAME parm [ax] [bx] value [ax] modify [exact] [cx] = "code" 0x90 ...`
+  // (the parts in either order): inline code with the registers it takes,
+  // answers and changes. The spec rides as an asm label
+  // "\02aux:parm|value|modify|exact|code" that a call of NAME is expanded
+  // from (CodeGen); NAME itself is never defined.
+  if (Name.is(tok::identifier) &&
+      llvm::any_of(Rest, [](const Token &T) { return T.is(tok::equal); })) {
+    std::string Code, Parm, Value, Modify;
+    bool Exact = false, Ok = true;
+    enum { Nowhere, InCode, InParm, InValue, InModify } Where = Nowhere;
+    SourceLocation Last = AuxLoc;
+    for (size_t I = 0; Ok && I < Rest.size(); ++I) {
+      const Token &T = Rest[I];
+      Last = T.getLocation();
+      if (T.is(tok::equal)) {
+        Where = InCode;
+      } else if (T.is(tok::string_literal)) {
+        SmallString<64> Buf;
+        bool Invalid = false;
+        StringRef Text = PP.getSpelling(T, Buf, &Invalid);
+        if (Invalid || Where != InCode || Text.size() < 2 ||
+            Text.front() != '"')
+          Ok = false;
+        else
+          Code += Text.substr(1, Text.size() - 2).str() + "\n";
+      } else if (T.is(tok::numeric_constant)) {
+        SmallString<16> Buf;
+        Code += ".byte " + PP.getSpelling(T, Buf).str() + "\n";
+      } else if (T.is(tok::char_constant)) {
+        SmallString<16> Buf;
+        Code += ".byte " + PP.getSpelling(T, Buf).str() + "\n";
+      } else if (T.is(tok::identifier)) {
+        StringRef Word = T.getIdentifierInfo()->getName();
+        Word.consume_front("__");
+        if (Word == "parm")
+          Where = InParm;
+        else if (Word == "value")
+          Where = InValue;
+        else if (Word == "modify")
+          Where = InModify;
+        else if (Word == "exact")
+          Exact = true;
+        else if (Word == "caller" || Word == "nomemory" || Word == "routine")
+          ;
+        else
+          Ok = false;
+      } else if (T.is(tok::l_square)) {
+        // One register set: [ax] or [dx ax].
+        std::string Set;
+        while (++I < Rest.size() && Rest[I].is(tok::identifier)) {
+          StringRef R = Rest[I].getIdentifierInfo()->getName();
+          R.consume_front("__");
+          Set += (Set.empty() ? "" : "+") + R.str();
+        }
+        if (I >= Rest.size() || Rest[I].isNot(tok::r_square))
+          Ok = false;
+        else if (Where == InParm)
+          Parm += Set + ";";
+        else if (Where == InValue)
+          Value = Set;
+        else if (Where == InModify)
+          Modify += Set + ";";
+        else
+          Ok = false;
+      } else {
+        Ok = false;
+      }
+    }
+    if (!Ok || Code.empty()) {
+      PP.Diag(AuxLoc, diag::warn_pragma_ignored);
+      return;
+    }
+    Token Symbol;
+    Symbol.startToken();
+    Symbol.setKind(tok::identifier);
+    Symbol.setLocation(Last);
+    Symbol.setIdentifierInfo(PP.getIdentifierInfo(
+        "\02aux:" + Parm + "|" + Value + "|" + Modify + "|" +
+        (Exact ? "1" : "0") + "|" + Code));
+    MutableArrayRef<Token> Toks(
+        PP.getPreprocessorAllocator().Allocate<Token>(3), 3);
+    Token &Annot = Toks[0];
+    Annot.startToken();
+    Annot.setKind(tok::annot_pragma_redefine_extname);
+    Annot.setLocation(AuxLoc);
+    Annot.setAnnotationEndLoc(Last);
+    Toks[1] = Name;
+    Toks[2] = Symbol;
+    PP.EnterTokenStream(Toks, /*DisableMacroExpansion=*/true,
+                        /*IsReinject=*/false);
     return;
   }
 
-  StringRef Spelling = PP.getSpelling(Link);
+  // The link-name form: `NAME "LINK"`. Register conventions without code are
+  // not carried, and say so.
+  if (Name.isNot(tok::identifier) || Rest.size() != 1 ||
+      Rest[0].isNot(tok::string_literal)) {
+    PP.Diag(AuxLoc, diag::warn_pragma_ignored);
+    return;
+  }
+  Token Link = Rest[0];
+
+  std::string Spelling = PP.getSpelling(Link);
   if (Spelling.size() < 2 || Spelling.front() != '"') {
     PP.Diag(Link.getLocation(), diag::warn_pragma_ignored);
     return;
@@ -2758,7 +2852,7 @@ void PragmaAuxHandler::HandlePragma(Preprocessor &PP,
   Symbol.setLocation(Link.getLocation());
   // LLVM's \01 marker: the name is the symbol as written, with no prefix.
   Symbol.setIdentifierInfo(PP.getIdentifierInfo(
-      "\01" + Spelling.substr(1, Spelling.size() - 2).str()));
+      "\01" + Spelling.substr(1, Spelling.size() - 2)));
 
   MutableArrayRef<Token> Toks(PP.getPreprocessorAllocator().Allocate<Token>(3),
                               3);
