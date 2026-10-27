@@ -4899,11 +4899,12 @@ static TypeSourceInfo *GetFullTypeForDeclarator(TypeProcessingState &state,
       // does not have a K&R-style identifier list), then the arguments are part
       // of the type, otherwise the argument list is ().
       DeclaratorChunk::FunctionTypeInfo &FTI = DeclType.Fun;
-      // i8086: `void far f(void)` is a far function, not a far void result.
-      if (T->isVoidType() && T.hasAddressSpace() &&
+      // i8086: `int far f(int)` is a far function, not a far int result, and
+      // every function is far in the medium model.
+      if (T.hasAddressSpace() &&
           S.Context.getTargetInfo().getTriple().getEnvironment() ==
               llvm::Triple::CODE16)
-        T = T.getUnqualifiedType();
+        T = S.Context.removeAddrSpaceQualType(T);
       IsQualifiedFunction =
           FTI.hasMethodTypeQualifiers() || FTI.hasRefQualifier();
 
@@ -6596,6 +6597,10 @@ static QualType redirectI8086PointerSpace(ASTContext &Context, QualType T,
           llvm::Triple::CODE16)
     return QualType();
   QualType Pointee = T->getPointeeType();
+  // A pointer to a function is a code pointer, far already in the medium
+  // model: `int (far *fp)(int)` is `int (*fp)(int)`.
+  if (Pointee->isFunctionType())
+    return T;
   if (Pointee.getAddressSpace() == ASIdx)
     return T;
   if (Pointee.getAddressSpace() != LangAS::Default)
