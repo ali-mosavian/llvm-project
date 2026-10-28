@@ -3839,8 +3839,10 @@ static CallingConv getCCForDeclaratorChunk(
     }
   }
 
-  CallingConv CC = S.Context.getDefaultCallingConvention(FTI.isVariadic,
-                                                         IsCXXInstanceMethod);
+  // An unprototyped C function cannot take a convention that fixes its parameters (-fdefault-calling-conv=regcall): it keeps the target's.
+  CallingConv CC = S.Context.getDefaultCallingConvention(
+      FTI.isVariadic || (!FTI.hasPrototype && !S.getLangOpts().CPlusPlus),
+      IsCXXInstanceMethod);
 
   if (S.getLangOpts().CUDA) {
     // If we're compiling CUDA/HIP code and targeting HIPSPV we need to make
