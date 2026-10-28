@@ -857,7 +857,7 @@ ABIArgInfo X86_32ABIInfo::classifyArgumentType(QualType Ty, CCState &State,
     // optimizations.
     // Don't do this for the MCU if there are still free integer registers
     // (see X86_64 ABI for full explanation).
-    if (TI.Width <= 4 * 32 && (!IsMCUABI || State.FreeRegs == 0) &&
+    if (TI.Width <= 4 * 32 && (!IsMCUABI || State.FreeRegs == 0) && !IsRegCall &&
         canExpandIndirectArgument(Ty))
       return ABIArgInfo::getExpandWithPadding(
           IsFastCall || IsVectorCall || IsRegCall, PaddingType);
