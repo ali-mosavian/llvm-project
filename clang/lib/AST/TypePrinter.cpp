@@ -1010,6 +1010,8 @@ StringRef clang::getParameterABISpelling(ParameterABI ABI) {
     return "out";
   case ParameterABI::HLSLInOut:
     return "inout";
+  case ParameterABI::I8086Register:
+    return "i8086_register";
   }
   llvm_unreachable("bad parameter ABI kind");
 }

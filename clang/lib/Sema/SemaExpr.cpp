@@ -7255,8 +7255,9 @@ ExprResult Sema::BuildResolvedCallExpr(Expr *Fn, NamedDecl *NDecl,
   if (FDecl) {
     // i8086: Borland code calls an interrupt function (a pushf, then a far call).
     if (FDecl->hasAttr<AnyX86InterruptAttr>() &&
-        Context.getTargetInfo().getTriple().getEnvironment() !=
-            llvm::Triple::CODE16) {
+        (Context.getTargetInfo().getTriple().getEnvironment() !=
+             llvm::Triple::CODE16 ||
+         FDecl->getNumParams() != 0)) {
       Diag(Fn->getExprLoc(), diag::err_anyx86_interrupt_called);
       return ExprError();
     }

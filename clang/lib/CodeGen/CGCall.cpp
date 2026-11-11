@@ -577,6 +577,13 @@ CodeGenTypes::arrangeFunctionDeclaration(const GlobalDecl GD) {
   CanQualTypeList argTypes;
   ExtParameterInfoList paramInfos;
   appendParameterTypes(*this, argTypes, paramInfos, FTP);
+  // i8086: an interrupt function's parameters are its saved registers, in place.
+  if (FD->hasAttr<AnyX86InterruptAttr>() &&
+      CGM.getTriple().getEnvironment() == llvm::Triple::CODE16) {
+    paramInfos.resize(argTypes.size());
+    for (auto &PI : paramInfos)
+      PI = PI.withABI(ParameterABI::I8086Register);
+  }
   return arrangeLLVMFunctionInfo(FTP->getReturnType().getUnqualifiedType(),
                                  FnInfoOpts::None, argTypes, FTP->getExtInfo(),
                                  paramInfos,
@@ -3325,6 +3332,7 @@ void CodeGenModule::ConstructAttributeList(StringRef Name,
       Attrs.addAttribute(llvm::Attribute::NoAlias);
       break;
     case ParameterABI::Ordinary:
+    case ParameterABI::I8086Register:
       break;
 
     case ParameterABI::SwiftIndirectResult: {
@@ -3566,7 +3574,12 @@ void CodeGenFunction::EmitFunctionProlog(const CGFunctionInfo &FI,
           Fn->getArg(FirstIRArg), Ty, ArgI.getIndirectAlign(), false, nullptr,
           nullptr, KnownNonNull);
 
-      if (!hasScalarEvaluationKind(Ty)) {
+      // i8086: an interrupt function's register parameter is the saved
+      // register itself, not a copy of it.
+      if (FI.getExtParameterInfo(ArgNo).getABI() ==
+          ParameterABI::I8086Register) {
+        ArgVals.push_back(ParamValue::forIndirect(ParamAddr));
+      } else if (!hasScalarEvaluationKind(Ty)) {
         // Aggregates and complex variables are accessed by reference. All we
         // need to do is realign the value, if requested. Also, if the address
         // may be aliased, copy it to ensure that the parameter variable is

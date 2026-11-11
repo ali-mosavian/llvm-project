@@ -41,8 +41,18 @@ public:
   void computeInfo(CGFunctionInfo &FI) const override {
     if (!getCXXABI().classifyReturnType(FI))
       FI.getReturnInfo() = classifyReturnType(FI.getReturnType());
-    for (auto &I : FI.arguments())
-      I.info = classifyArgumentType(I.type);
+    unsigned Index = 0;
+    for (auto &I : FI.arguments()) {
+      // An interrupt function's register parameters are the saved registers in
+      // place: passed byval, so its assignments to them are what it restores.
+      if (FI.getExtParameterInfo(Index++).getABI() ==
+          ParameterABI::I8086Register)
+        I.info = ABIArgInfo::getIndirect(CharUnits::fromQuantity(2),
+                                         getDataLayout().getAllocaAddrSpace(),
+                                         /*ByVal=*/true, /*Realign=*/false);
+      else
+        I.info = classifyArgumentType(I.type);
+    }
   }
 
   RValue EmitVAArg(CodeGenFunction &CGF, Address VAListAddr, QualType Ty,

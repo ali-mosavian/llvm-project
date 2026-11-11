@@ -2675,6 +2675,7 @@ static void checkExtParameterInfos(Sema &S, ArrayRef<QualType> paramTypes,
     case ParameterABI::Ordinary:
     case ParameterABI::HLSLOut:
     case ParameterABI::HLSLInOut:
+    case ParameterABI::I8086Register:
       continue;
 
     // swift_indirect_result parameters must be a prefix of the function

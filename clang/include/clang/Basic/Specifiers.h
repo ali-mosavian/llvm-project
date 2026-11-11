@@ -404,6 +404,11 @@ namespace clang {
 
     // This parameter is a copy-in/copy-out HLSL parameter.
     HLSLInOut,
+
+    // i8086: this parameter of an interrupt function is a saved register,
+    // passed in place (byval): the function's assignments to it are what its
+    // return restores.
+    I8086Register,
   };
 
   /// Assigned inheritance model for a class in the MS C++ ABI. Must match order

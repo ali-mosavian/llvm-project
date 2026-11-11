@@ -3735,6 +3735,7 @@ CXXNameMangler::mangleExtParameterInfo(FunctionProtoType::ExtParameterInfo PI) {
   // HLSL parameter mangling.
   case ParameterABI::HLSLOut:
   case ParameterABI::HLSLInOut:
+  case ParameterABI::I8086Register:
     mangleVendorQualifier(getParameterABISpelling(PI.getABI()));
     break;
 
