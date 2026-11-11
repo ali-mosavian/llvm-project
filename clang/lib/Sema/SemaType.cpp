@@ -6784,10 +6784,10 @@ static void HandleAddressSpaceTypeAttribute(QualType &Type,
       if (Attr.getKind() == ParsedAttr::AT_I8086Near) {
         if (!S.Context.getTargetInfo().hasFeature("i8086-far-data")) {
           // Medium model: `near` changes no data, but on a function's result
-          // it says the function is near; keep it as sugar for the declarator.
-          if (!Type->isPointerType())
-            Type = State.getAttributedType(
-                ::new (S.Context) I8086NearAttr(S.Context, Attr), Type, Type);
+          // (`int near f()`, `char *near f()`) it says the function is near;
+          // keep it as sugar for the declarator.
+          Type = State.getAttributedType(
+              ::new (S.Context) I8086NearAttr(S.Context, Attr), Type, Type);
           return;
         }
         // Far data is the default there: `char *__near__ p` is a near

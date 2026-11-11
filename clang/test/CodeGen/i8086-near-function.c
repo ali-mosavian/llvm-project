@@ -6,14 +6,17 @@ int __near__ nf(int a) { return a + 1; }
 int __far__ ff(int a) { return a + 2; }
 int uf(int a) { return a + 3; }
 int __near__ declared(int);
-int use(void) { return nf(1) + ff(2) + uf(3) + declared(4); }
+char *__near__ pf(void) { return 0; }
+int use(void) { return nf(1) + ff(2) + uf(3) + declared(4) + (pf() != 0); }
 int __near__ declared(int a) { return a; }
 
 // CHECK: define{{.*}} i16 @nf(i16 {{.*}}) addrspace(0)
 // CHECK: define{{.*}} i16 @ff(i16 {{.*}}) addrspace(1)
 // CHECK: define{{.*}} i16 @uf(i16 {{.*}}) addrspace(1)
+// CHECK: define{{.*}} ptr @pf() addrspace(0)
 // CHECK: call addrspace(0) i16 @nf(
 // CHECK: call addrspace(1) i16 @ff(
 // CHECK: call addrspace(1) i16 @uf(
 // CHECK: call addrspace(0) i16 @declared(
+// CHECK: call addrspace(0) ptr @pf(
 // CHECK: define{{.*}} i16 @declared(i16 {{.*}}) addrspace(0)
