@@ -4608,6 +4608,14 @@ def I8086Near : TypeAttr {
   let Documentation = [InternalOnly];
 }
 
+// i8086: set on a function declared `near` (Borland), which is entered by a near call and returns with `ret`.
+def I8086NearCode : InheritableAttr {
+  let Spellings = [CustomKeyword<"__i8086_near_code__">];
+  let Subjects = SubjectList<[Function]>;
+  let SimpleHandler = 1;
+  let Documentation = [InternalOnly];
+}
+
 def I8086Huge : TypeAttr {
   let Spellings = [CustomKeyword<"__huge__">];
   let Documentation = [InternalOnly];

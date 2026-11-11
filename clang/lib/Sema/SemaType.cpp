@@ -4901,10 +4901,21 @@ static TypeSourceInfo *GetFullTypeForDeclarator(TypeProcessingState &state,
       DeclaratorChunk::FunctionTypeInfo &FTI = DeclType.Fun;
       // i8086: `int far f(int)` is a far function, not a far int result, and
       // every function is far in the medium model.
-      if (T.hasAddressSpace() &&
-          S.Context.getTargetInfo().getTriple().getEnvironment() ==
-              llvm::Triple::CODE16)
-        T = S.Context.removeAddrSpaceQualType(T);
+      if (S.Context.getTargetInfo().getTriple().getEnvironment() ==
+          llvm::Triple::CODE16) {
+        if (const auto *Written = dyn_cast<AttributedType>(T.getTypePtr());
+            Written && Written->getAttrKind() == attr::I8086Near) {
+          // The declarator is a near function: tell ProcessDeclAttributes.
+          IdentifierInfo *Name =
+              &S.PP.getIdentifierTable().get("__i8086_near_code__");
+          D.getAttributes().addNew(
+              Name, SourceRange(D.getBeginLoc()), AttributeScopeInfo(),
+              nullptr, 0, ParsedAttr::Form::Keyword(false, false));
+          T = Written->getModifiedType();
+        }
+        if (T.hasAddressSpace())
+          T = S.Context.removeAddrSpaceQualType(T);
+      }
       IsQualifiedFunction =
           FTI.hasMethodTypeQualifiers() || FTI.hasRefQualifier();
 
@@ -6771,8 +6782,14 @@ static void HandleAddressSpaceTypeAttribute(QualType &Type,
         return;
       }
       if (Attr.getKind() == ParsedAttr::AT_I8086Near) {
-        if (!S.Context.getTargetInfo().hasFeature("i8086-far-data"))
+        if (!S.Context.getTargetInfo().hasFeature("i8086-far-data")) {
+          // Medium model: `near` changes no data, but on a function's result
+          // it says the function is near; keep it as sugar for the declarator.
+          if (!Type->isPointerType())
+            Type = State.getAttributedType(
+                ::new (S.Context) I8086NearAttr(S.Context, Attr), Type, Type);
           return;
+        }
         // Far data is the default there: `char *__near__ p` is a near
         // pointer, and `__near__ char *p` marks the pointee for the `*`.
         if (Type->isPointerType()) {

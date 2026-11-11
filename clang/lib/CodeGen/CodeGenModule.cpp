@@ -5779,9 +5779,14 @@ llvm::Constant *CodeGenModule::GetOrCreateLLVMFunction(
     IsIncompleteFunction = true;
   }
 
-  llvm::Function *F =
-      llvm::Function::Create(FTy, llvm::Function::ExternalLinkage,
-                             Entry ? StringRef() : MangledName, &getModule());
+  // i8086: a `near` function lives in near code, address space 0; the rest are
+  // in the program address space (far in the medium model).
+  unsigned CodeAS = getDataLayout().getProgramAddressSpace();
+  if (D && D->hasAttr<I8086NearCodeAttr>())
+    CodeAS = 0;
+  llvm::Function *F = llvm::Function::Create(
+      FTy, llvm::Function::ExternalLinkage, CodeAS,
+      Entry ? StringRef() : MangledName, &getModule());
 
   // Store the declaration associated with this function so it is potentially
   // updated by further declarations or definitions and emitted at the end.
