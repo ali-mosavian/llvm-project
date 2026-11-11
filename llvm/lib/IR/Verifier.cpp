@@ -3255,7 +3255,10 @@ void Verifier::visitFunction(const Function &F) {
   case CallingConv::C:
     break;
   case CallingConv::X86_INTR: {
-    Check(F.arg_empty() || Attrs.hasParamAttr(0, Attribute::ByVal),
+    // i8086 (Borland): the parameters are the registers the handler saved.
+    Check(F.arg_empty() || Attrs.hasParamAttr(0, Attribute::ByVal) ||
+              F.getParent()->getTargetTriple().getEnvironment() ==
+                  Triple::CODE16,
           "Calling convention parameter requires byval", &F);
     break;
   }

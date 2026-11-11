@@ -1022,6 +1022,14 @@ void SemaX86::handleAnyInterruptAttr(Decl *D, const ParsedAttr &AL) {
         << ExpectedFunctionWithProtoType;
     return;
   }
+  // i8086 (Borland): an interrupt function takes the registers it saved as its
+  // parameters, whatever they are, and is entered with the flags pushed.
+  if (Context.getTargetInfo().getTriple().getEnvironment() ==
+      llvm::Triple::CODE16) {
+    D->addAttr(::new (Context) AnyX86InterruptAttr(Context, AL));
+    D->addAttr(UsedAttr::CreateImplicit(Context));
+    return;
+  }
   // Interrupt handler must have void return type.
   if (!getFunctionOrMethodResultType(D)->isVoidType()) {
     Diag(getFunctionOrMethodResultSourceRange(D).getBegin(),

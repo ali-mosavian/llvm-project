@@ -7253,7 +7253,10 @@ ExprResult Sema::BuildResolvedCallExpr(Expr *Fn, NamedDecl *NDecl,
 
   // Functions with 'interrupt' attribute cannot be called directly.
   if (FDecl) {
-    if (FDecl->hasAttr<AnyX86InterruptAttr>()) {
+    // i8086: Borland code calls an interrupt function (a pushf, then a far call).
+    if (FDecl->hasAttr<AnyX86InterruptAttr>() &&
+        Context.getTargetInfo().getTriple().getEnvironment() !=
+            llvm::Triple::CODE16) {
       Diag(Fn->getExprLoc(), diag::err_anyx86_interrupt_called);
       return ExprError();
     }

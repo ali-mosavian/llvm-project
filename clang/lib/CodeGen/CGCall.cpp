@@ -6477,6 +6477,11 @@ RValue CodeGenFunction::EmitCall(const CGFunctionInfo &CallInfo,
   // Apply the attributes and calling convention.
   CI->setAttributes(Attrs);
   CI->setCallingConv(static_cast<llvm::CallingConv::ID>(CallingConv));
+  // i8086: a call of an interrupt function is made in its convention.
+  if (const auto *FD = dyn_cast_or_null<FunctionDecl>(TargetDecl);
+      FD && FD->hasAttr<AnyX86InterruptAttr>() &&
+      CGM.getTriple().getEnvironment() == llvm::Triple::CODE16)
+    CI->setCallingConv(llvm::CallingConv::X86_INTR);
 
   // Apply various metadata.
 

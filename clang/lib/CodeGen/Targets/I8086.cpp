@@ -59,6 +59,17 @@ public:
   I8086TargetCodeGenInfo(CodeGenTypes &CGT)
       : TargetCodeGenInfo(std::make_unique<I8086ABIInfo>(CGT)) {}
 
+  // An interrupt function is in the x86 interrupt convention; its parameters
+  // are the registers it saved, ordinary values (not upstream's byval frame).
+  void setTargetAttributes(const Decl *D, llvm::GlobalValue *GV,
+                           CodeGen::CodeGenModule &CGM) const override {
+    if (GV->isDeclaration())
+      return;
+    if (const auto *FD = dyn_cast_or_null<FunctionDecl>(D))
+      if (FD->hasAttr<AnyX86InterruptAttr>())
+        cast<llvm::Function>(GV)->setCallingConv(llvm::CallingConv::X86_INTR);
+  }
+
   // A huge object lives in a far segment; only pointers to it are huge.
   LangAS getGlobalVarAddressSpace(CodeGenModule &CGM,
                                   const VarDecl *D) const override {
